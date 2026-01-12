@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FIFA UI Automation",
-  "version": "5.0",
+  "version": "5.1",
   "description": "Alt+T = Tickets, Alt+C = Card, BUY button on lottery page",
   "permissions": ["activeTab", "scripting", "tabs"],
   "host_permissions": ["https://*.fifa.com/*", "https://*.tickets.fifa.com/*"],
@@ -15,9 +15,9 @@
     },
     {
       "matches": [
-        "https://*.tickets.fifa.com/account/lotteryApplications*",
+        "https://*.tickets.fifa.com/account*",
         "https://*.tickets.fifa.com/*lottery*",
-        "https://fifa-fwc26-us.tickets.fifa.com/account/lotteryApplications*"
+        "https://fifa-fwc26-us.tickets.fifa.com/account*"
       ],
       "js": ["lottery-buy.js"],
       "run_at": "document_idle"

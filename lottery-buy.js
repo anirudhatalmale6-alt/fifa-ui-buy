@@ -7,11 +7,16 @@
 (function() {
   console.log('[FIFA Buy] Lottery page detected:', window.location.href);
 
-  // Only run on lottery applications page
+  // Run on lottery applications page AND account page
   const currentUrl = window.location.href.toLowerCase();
-  if (!currentUrl.includes('lotteryapplications') && !currentUrl.includes('lottery')) {
+  const isLotteryPage = currentUrl.includes('lotteryapplications') || currentUrl.includes('lottery');
+  const isAccountPage = currentUrl.includes('/account') && !currentUrl.includes('lotteryapplications');
+
+  if (!isLotteryPage && !isAccountPage) {
     return;
   }
+
+  console.log('[FIFA Buy] Page type:', isLotteryPage ? 'Lottery' : 'Account');
 
   let buyStarted = false;
 
