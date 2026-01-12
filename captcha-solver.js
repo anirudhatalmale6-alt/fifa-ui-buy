@@ -1,5 +1,6 @@
 /**
- * 2Captcha Solver for FunCaptcha/Arkose Labs
+ * 2Captcha Solver for FIFA Slider/Puzzle Captcha
+ * Supports: GeeTest, Slider puzzles, Image puzzles
  * API Key: 8b844af3255fd40f6ee4ddc5091cac5c
  */
 
@@ -15,7 +16,6 @@ class CaptchaSolver {
     console.log('[2Captcha] ' + message);
   }
 
-  // Show status notification
   showNotification(message, isError = false) {
     const existing = document.getElementById('captcha-notification');
     if (existing) existing.remove();
@@ -34,73 +34,91 @@ class CaptchaSolver {
       font-family: sans-serif;
       font-size: 14px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      max-width: 300px;
     `;
     notif.textContent = message;
     document.body.appendChild(notif);
-    setTimeout(() => notif.remove(), 5000);
+    if (!isError) setTimeout(() => notif.remove(), 5000);
   }
 
-  // Detect FunCaptcha/Arkose Labs on page
-  detectFunCaptcha() {
-    // Look for FunCaptcha iframe or container
-    const funCaptchaIframe = document.querySelector('iframe[src*="funcaptcha"], iframe[src*="arkoselabs"], iframe[data-e2e="enforcement-frame"]');
-    const funCaptchaContainer = document.querySelector('[id*="funcaptcha"], [class*="funcaptcha"], [data-callback]');
-    const arkoseContainer = document.querySelector('[id*="arkose"], [class*="arkose"]');
+  // Detect any captcha on page
+  detectCaptcha() {
+    // Look for FIFA verification page
+    const verificationText = document.body.innerText.includes('Verification Required');
+    const sliderText = document.body.innerText.includes('Slide right to complete');
+    const puzzleImage = document.querySelector('img[src*="puzzle"], img[src*="captcha"]');
 
-    // Look for common captcha challenge elements
-    const challengeFrame = document.querySelector('iframe[title*="challenge"], iframe[title*="verification"]');
+    // Look for slider elements
+    const slider = document.querySelector('[class*="slider"], [class*="slide"], button[aria-label*="slide"]');
 
-    return funCaptchaIframe || funCaptchaContainer || arkoseContainer || challengeFrame;
+    // GeeTest
+    const geetest = document.querySelector('[class*="geetest"], [id*="geetest"]');
+
+    // Generic captcha container
+    const captchaContainer = document.querySelector('[class*="captcha"], [id*="captcha"]');
+
+    return verificationText || sliderText || puzzleImage || slider || geetest || captchaContainer;
   }
 
-  // Get FunCaptcha public key from page
-  getFunCaptchaKey() {
-    // Try to find the public key in various places
-
-    // Method 1: From data attribute
-    const dataKey = document.querySelector('[data-pkey], [data-public-key]');
-    if (dataKey) {
-      return dataKey.getAttribute('data-pkey') || dataKey.getAttribute('data-public-key');
+  // Get the captcha image as base64
+  async getCaptchaImageBase64() {
+    // Try to find the puzzle image
+    const images = document.querySelectorAll('img');
+    for (const img of images) {
+      // Look for the main puzzle image (usually larger than 100px)
+      if (img.width > 100 && img.height > 50) {
+        const src = img.src;
+        if (src.startsWith('data:')) {
+          return src.split(',')[1];
+        }
+        // Fetch and convert to base64
+        try {
+          const response = await fetch(src);
+          const blob = await response.blob();
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          this.log('Could not fetch image: ' + e.message);
+        }
+      }
     }
+    return null;
+  }
 
-    // Method 2: From iframe src
-    const iframe = document.querySelector('iframe[src*="funcaptcha"], iframe[src*="arkoselabs"]');
-    if (iframe) {
-      const src = iframe.src;
-      const pkeyMatch = src.match(/pkey=([A-Za-z0-9-]+)/);
-      if (pkeyMatch) return pkeyMatch[1];
+  // Take screenshot of captcha area
+  async getScreenshot() {
+    // For slider captcha, we need to capture the visual
+    const captchaArea = document.querySelector('[class*="captcha"], [class*="verification"]') || document.body;
+
+    // Use html2canvas if available, otherwise return null
+    if (typeof html2canvas !== 'undefined') {
+      const canvas = await html2canvas(captchaArea);
+      return canvas.toDataURL('image/png').split(',')[1];
     }
-
-    // Method 3: From script variables (search page scripts)
-    const scripts = document.querySelectorAll('script');
-    for (const script of scripts) {
-      const content = script.textContent || script.innerHTML;
-      const keyMatch = content.match(/publicKey["']?\s*[:=]\s*["']([A-Za-z0-9-]+)["']/);
-      if (keyMatch) return keyMatch[1];
-    }
-
-    // Method 4: From window object
-    if (window.FUNCAPTCHA_PUBLIC_KEY) return window.FUNCAPTCHA_PUBLIC_KEY;
-    if (window.arkose && window.arkose.publicKey) return window.arkose.publicKey;
 
     return null;
   }
 
-  // Submit FunCaptcha to 2captcha
-  async submitFunCaptcha(publicKey, pageUrl) {
-    this.log('Submitting FunCaptcha to 2captcha...');
-    this.showNotification('Solving captcha...');
+  // Submit image captcha to 2captcha (coordinates method for slider)
+  async submitImageCaptcha(imageBase64) {
+    this.log('Submitting image captcha to 2captcha...');
+    this.showNotification('Uploading captcha image...');
 
-    const params = new URLSearchParams({
-      key: this.apiKey,
-      method: 'funcaptcha',
-      publickey: publicKey,
-      pageurl: pageUrl,
-      json: 1
-    });
+    const formData = new FormData();
+    formData.append('key', this.apiKey);
+    formData.append('method', 'base64');
+    formData.append('body', imageBase64);
+    formData.append('coordinatescaptcha', '1'); // For click coordinates
+    formData.append('json', '1');
 
     try {
-      const response = await fetch(`${CAPTCHA_API_URL}/in.php?${params}`);
+      const response = await fetch(`${CAPTCHA_API_URL}/in.php`, {
+        method: 'POST',
+        body: formData
+      });
       const data = await response.json();
 
       if (data.status === 1) {
@@ -111,18 +129,86 @@ class CaptchaSolver {
       }
     } catch (error) {
       this.log('Submit error: ' + error.message);
-      this.showNotification('Captcha submit failed: ' + error.message, true);
+      this.showNotification('Submit failed: ' + error.message, true);
       throw error;
     }
   }
 
-  // Get captcha solution from 2captcha
+  // Submit slider captcha (using canvas method)
+  async submitSliderCaptcha() {
+    this.log('Submitting slider captcha...');
+    this.showNotification('Analyzing slider puzzle...');
+
+    // For slider captchas, 2captcha needs the background and slider images
+    const images = Array.from(document.querySelectorAll('img'));
+
+    // Find puzzle background (larger image)
+    let bgImage = null;
+    let sliderImage = null;
+
+    for (const img of images) {
+      if (img.width > 200) {
+        bgImage = img;
+      } else if (img.width > 30 && img.width < 100) {
+        sliderImage = img;
+      }
+    }
+
+    if (!bgImage) {
+      throw new Error('Could not find puzzle image');
+    }
+
+    // Get base64 of main image
+    const imageBase64 = await this.imageToBase64(bgImage.src);
+
+    // Use normal image captcha method - 2captcha workers will determine slider position
+    const formData = new FormData();
+    formData.append('key', this.apiKey);
+    formData.append('method', 'base64');
+    formData.append('body', imageBase64);
+    formData.append('json', '1');
+    formData.append('textinstructions', 'Find the x-coordinate where the puzzle piece fits. Return only the number.');
+
+    try {
+      const response = await fetch(`${CAPTCHA_API_URL}/in.php`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+
+      if (data.status === 1) {
+        this.log('Slider captcha submitted, task ID: ' + data.request);
+        return data.request;
+      } else {
+        throw new Error(data.request || 'Submit failed');
+      }
+    } catch (error) {
+      this.log('Submit error: ' + error.message);
+      throw error;
+    }
+  }
+
+  async imageToBase64(src) {
+    if (src.startsWith('data:')) {
+      return src.split(',')[1];
+    }
+
+    const response = await fetch(src);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // Get solution from 2captcha
   async getSolution(taskId) {
     this.log('Waiting for solution...');
 
-    const maxAttempts = 60; // 5 minutes max
+    const maxAttempts = 60;
     for (let i = 0; i < maxAttempts; i++) {
-      await this.delay(5000); // Wait 5 seconds between checks
+      await this.delay(5000);
 
       const params = new URLSearchParams({
         key: this.apiKey,
@@ -136,97 +222,116 @@ class CaptchaSolver {
         const data = await response.json();
 
         if (data.status === 1) {
-          this.log('Solution received!');
+          this.log('Solution received: ' + data.request);
           this.showNotification('Captcha solved!');
           return data.request;
         } else if (data.request === 'CAPCHA_NOT_READY') {
-          this.log('Still solving... attempt ' + (i + 1));
-          this.showNotification('Solving captcha... ' + (i * 5) + 's');
+          this.showNotification('Solving... ' + (i * 5) + 's');
         } else {
-          throw new Error(data.request || 'Get solution failed');
+          throw new Error(data.request);
         }
       } catch (error) {
-        if (error.message !== 'CAPCHA_NOT_READY') {
-          this.log('Get solution error: ' + error.message);
+        if (!error.message.includes('NOT_READY')) {
           throw error;
         }
       }
     }
-
-    throw new Error('Captcha solving timeout');
+    throw new Error('Timeout');
   }
 
-  // Apply the solution to the page
-  applySolution(solution) {
-    this.log('Applying solution to page...');
+  // Move slider to solved position
+  moveSlider(xPosition) {
+    this.log('Moving slider to position: ' + xPosition);
 
-    // Method 1: Try to find callback function
-    if (window.funcaptchaCallback) {
-      window.funcaptchaCallback(solution);
-      return true;
+    // Find the slider button
+    const sliderBtn = document.querySelector('button[class*="slider"], [class*="slide"] button, button[aria-label*="slide"]') ||
+                      document.querySelector('button') ||
+                      document.querySelector('[draggable="true"]');
+
+    if (!sliderBtn) {
+      this.log('Could not find slider button');
+      return false;
     }
 
-    // Method 2: Try to set hidden input
-    const tokenInput = document.querySelector('input[name*="fc-token"], input[name*="funcaptcha"], input[name*="verification-token"]');
-    if (tokenInput) {
-      tokenInput.value = solution;
-      return true;
+    const sliderTrack = sliderBtn.parentElement;
+    const trackRect = sliderTrack.getBoundingClientRect();
+    const btnRect = sliderBtn.getBoundingClientRect();
+
+    // Calculate target position
+    const startX = btnRect.left + btnRect.width / 2;
+    const startY = btnRect.top + btnRect.height / 2;
+    const endX = trackRect.left + parseInt(xPosition);
+
+    // Simulate mouse events
+    this.simulateSlide(sliderBtn, startX, startY, endX, startY);
+
+    return true;
+  }
+
+  simulateSlide(element, startX, startY, endX, endY) {
+    // Mouse down
+    element.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: startX,
+      clientY: startY
+    }));
+
+    // Mouse move (simulate drag)
+    const steps = 20;
+    const dx = (endX - startX) / steps;
+
+    for (let i = 0; i <= steps; i++) {
+      setTimeout(() => {
+        document.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true,
+          cancelable: true,
+          clientX: startX + dx * i,
+          clientY: startY
+        }));
+      }, i * 20);
     }
 
-    // Method 3: Dispatch custom event
-    const event = new CustomEvent('funcaptcha-solved', { detail: { token: solution } });
-    document.dispatchEvent(event);
-
-    // Method 4: Try to find and call verify callback
-    const verifyCallbacks = ['verifyCallback', 'onVerify', 'captchaCallback', 'onSuccess'];
-    for (const cb of verifyCallbacks) {
-      if (typeof window[cb] === 'function') {
-        window[cb](solution);
-        return true;
-      }
-    }
-
-    this.log('Could not find callback, solution: ' + solution.substring(0, 50) + '...');
-    return false;
+    // Mouse up
+    setTimeout(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+        clientX: endX,
+        clientY: endY
+      }));
+    }, steps * 20 + 100);
   }
 
   // Main solve function
   async solve() {
     this.log('Starting captcha detection...');
 
-    const captchaElement = this.detectFunCaptcha();
-    if (!captchaElement) {
-      this.log('No FunCaptcha detected on page');
-      this.showNotification('No captcha detected', true);
+    if (!this.detectCaptcha()) {
+      this.log('No captcha detected');
+      this.showNotification('No captcha detected on page', true);
       return false;
     }
 
-    this.log('FunCaptcha detected!');
-
-    const publicKey = this.getFunCaptchaKey();
-    if (!publicKey) {
-      this.log('Could not find FunCaptcha public key');
-      this.showNotification('Could not find captcha key', true);
-      return false;
-    }
-
-    this.log('Public key: ' + publicKey);
+    this.log('Captcha detected!');
+    this.showNotification('Captcha detected, solving...');
 
     try {
-      const taskId = await this.submitFunCaptcha(publicKey, window.location.href);
+      const taskId = await this.submitSliderCaptcha();
       const solution = await this.getSolution(taskId);
-      const applied = this.applySolution(solution);
 
-      if (applied) {
-        this.showNotification('Captcha solved and applied!');
+      // Try to apply solution (move slider)
+      if (solution && !isNaN(parseInt(solution))) {
+        this.moveSlider(solution);
+        this.showNotification('Slider moved to position ' + solution);
       } else {
-        this.showNotification('Captcha solved - check console for token');
-        console.log('[2Captcha] Solution token:', solution);
+        this.showNotification('Solution: ' + solution);
+        console.log('[2Captcha] Full solution:', solution);
       }
 
       return solution;
     } catch (error) {
-      this.showNotification('Captcha solving failed: ' + error.message, true);
+      this.showNotification('Failed: ' + error.message, true);
       return false;
     }
   }
@@ -239,41 +344,45 @@ class CaptchaSolver {
 // Create global instance
 window.captchaSolver = new CaptchaSolver();
 
-// Auto-detect and show solve button if captcha found
+// Add solve button when captcha detected
 (function() {
-  const checkForCaptcha = () => {
+  const addSolveButton = () => {
     const solver = window.captchaSolver;
-    if (solver.detectFunCaptcha()) {
-      // Add solve button if not exists
-      if (!document.getElementById('captcha-solve-btn')) {
-        const btn = document.createElement('button');
-        btn.id = 'captcha-solve-btn';
-        btn.textContent = '🔓 SOLVE CAPTCHA';
-        btn.style.cssText = `
-          position: fixed;
-          bottom: 20px;
-          right: 20px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          border: none;
-          padding: 15px 25px;
-          border-radius: 10px;
-          font-size: 16px;
-          font-weight: bold;
-          cursor: pointer;
-          z-index: 9999999;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        `;
-        btn.onclick = () => solver.solve();
-        document.body.appendChild(btn);
-        console.log('[2Captcha] Solve button added');
-      }
+
+    if (solver.detectCaptcha() && !document.getElementById('captcha-solve-btn')) {
+      const btn = document.createElement('button');
+      btn.id = 'captcha-solve-btn';
+      btn.innerHTML = '🔓 SOLVE CAPTCHA';
+      btn.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 15px 25px;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        z-index: 9999999;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      `;
+      btn.onclick = () => {
+        btn.disabled = true;
+        btn.textContent = '⏳ Solving...';
+        solver.solve().finally(() => {
+          btn.disabled = false;
+          btn.innerHTML = '🔓 SOLVE CAPTCHA';
+        });
+      };
+      document.body.appendChild(btn);
+      console.log('[2Captcha] Solve button added');
     }
   };
 
-  // Check on load and periodically
-  setTimeout(checkForCaptcha, 2000);
-  setInterval(checkForCaptcha, 5000);
+  setTimeout(addSolveButton, 2000);
+  setInterval(addSolveButton, 3000);
 })();
 
-console.log('[2Captcha] Captcha solver loaded. Use window.captchaSolver.solve() or click the SOLVE CAPTCHA button.');
+console.log('[2Captcha] Slider captcha solver loaded');
