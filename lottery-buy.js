@@ -143,37 +143,52 @@
   async function clickRandomSelectionDraw() {
     updateStatus('Looking for Random Selection Draw...');
 
-    // Look for "Random Selection Draw" text in buttons/links
-    const allElements = document.querySelectorAll('button, a, span, div, p');
+    // FIFA-SPECIFIC: Look for stx-ballot-selection-details div with role="button"
+    // The HTML structure is: div[id*="stx-ballot-selection-details"][role="button"] > ... > p.stx-ballot-name > "Random Selection Draw"
+    const ballotSelections = document.querySelectorAll('div[id*="stx-ballot-selection-details"][role="button"]');
+    console.log('[FIFA Buy] Found', ballotSelections.length, 'ballot selection elements');
 
-    for (const el of allElements) {
-      const text = (el.textContent || '').trim().toLowerCase();
-      if (text.includes('random selection') || text.includes('selection draw') ||
-          text.includes('random draw') || text === 'random selection draw') {
-        console.log('[FIFA Buy] Found Random Selection Draw element:', el.tagName);
-
-        // Try clicking the element or its parent button/link
-        const clickable = el.closest('button') || el.closest('a') || el.closest('[role="button"]') || el;
-        clickable.click();
-        showNotification('Clicked Random Selection Draw');
-        updateStatus('Selected Random Draw');
-        return true;
-      }
-    }
-
-    // Try looking for radio buttons or cards with this option
-    const radioButtons = document.querySelectorAll('input[type="radio"], .p-radiobutton');
-    for (const radio of radioButtons) {
-      const parent = radio.closest('label') || radio.closest('div');
-      if (parent) {
-        const text = (parent.textContent || '').toLowerCase();
-        if (text.includes('random') || text.includes('selection draw')) {
-          console.log('[FIFA Buy] Found radio button for Random Selection');
-          radio.click();
-          showNotification('Selected Random Selection Draw');
+    for (const selection of ballotSelections) {
+      const ballotName = selection.querySelector('.stx-ballot-name, p[class*="stx-ballot-name"]');
+      if (ballotName) {
+        const text = (ballotName.textContent || '').trim().toLowerCase();
+        console.log('[FIFA Buy] Ballot name:', text);
+        if (text.includes('random selection draw')) {
+          console.log('[FIFA Buy] Found Random Selection Draw ballot, clicking...');
+          selection.click();
+          showNotification('Clicked Random Selection Draw');
           updateStatus('Selected Random Draw');
           return true;
         }
+      }
+    }
+
+    // Fallback: Look for p.stx-ballot-name containing "Random Selection Draw" and click parent role="button"
+    const ballotNames = document.querySelectorAll('p.stx-ballot-name, .stx-ballot-name');
+    for (const el of ballotNames) {
+      const text = (el.textContent || '').trim().toLowerCase();
+      if (text.includes('random selection draw')) {
+        console.log('[FIFA Buy] Found Random Selection Draw via ballot name, looking for parent button...');
+        const clickable = el.closest('[role="button"]') || el.closest('div[id*="stx-ballot"]');
+        if (clickable) {
+          clickable.click();
+          showNotification('Clicked Random Selection Draw');
+          updateStatus('Selected Random Draw');
+          return true;
+        }
+      }
+    }
+
+    // Fallback 2: Any element with role="button" containing random selection text
+    const roleButtons = document.querySelectorAll('[role="button"]');
+    for (const btn of roleButtons) {
+      const text = (btn.textContent || '').toLowerCase();
+      if (text.includes('random selection draw') && !text.includes('first come')) {
+        console.log('[FIFA Buy] Found role=button with Random Selection Draw');
+        btn.click();
+        showNotification('Clicked Random Selection Draw');
+        updateStatus('Selected Random Draw');
+        return true;
       }
     }
 
