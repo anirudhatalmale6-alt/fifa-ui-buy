@@ -344,12 +344,21 @@ class CaptchaSolver {
 // Create global instance
 window.captchaSolver = new CaptchaSolver();
 
-// Add solve button when captcha detected
+// Add solve button - ALWAYS show on FIFA verification pages
 (function() {
-  const addSolveButton = () => {
-    const solver = window.captchaSolver;
+  console.log('[2Captcha] Script initializing on:', window.location.href);
 
-    if (solver.detectCaptcha() && !document.getElementById('captcha-solve-btn')) {
+  const addSolveButton = () => {
+    // Check if we're on a verification page
+    const pageText = document.body ? document.body.innerText : '';
+    const isVerificationPage = pageText.includes('Verification Required') ||
+                               pageText.includes('Slide right to complete');
+
+    console.log('[2Captcha] Page check - Verification page:', isVerificationPage);
+
+    // Always add button if on verification page and button doesn't exist
+    if (isVerificationPage && !document.getElementById('captcha-solve-btn')) {
+      console.log('[2Captcha] Adding solve button...');
       const btn = document.createElement('button');
       btn.id = 'captcha-solve-btn';
       btn.innerHTML = '🔓 SOLVE CAPTCHA';
@@ -371,18 +380,25 @@ window.captchaSolver = new CaptchaSolver();
       btn.onclick = () => {
         btn.disabled = true;
         btn.textContent = '⏳ Solving...';
-        solver.solve().finally(() => {
+        window.captchaSolver.solve().finally(() => {
           btn.disabled = false;
           btn.innerHTML = '🔓 SOLVE CAPTCHA';
         });
       };
       document.body.appendChild(btn);
-      console.log('[2Captcha] Solve button added');
+      console.log('[2Captcha] ✅ Solve button added!');
     }
   };
 
+  // Try multiple times to ensure button is added
+  setTimeout(addSolveButton, 500);
+  setTimeout(addSolveButton, 1000);
   setTimeout(addSolveButton, 2000);
-  setInterval(addSolveButton, 3000);
+  setTimeout(addSolveButton, 3000);
+  setTimeout(addSolveButton, 5000);
+
+  // Also check periodically
+  setInterval(addSolveButton, 2000);
 })();
 
 console.log('[2Captcha] Slider captcha solver loaded');

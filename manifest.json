@@ -1,25 +1,26 @@
 {
   "manifest_version": 3,
   "name": "FIFA UI Automation",
-  "version": "6.0",
+  "version": "6.2",
   "description": "Alt+T = Tickets, Alt+C = Card, BUY button + 2captcha solver",
   "permissions": ["activeTab", "scripting", "tabs"],
-  "host_permissions": ["https://*.fifa.com/*", "https://*.tickets.fifa.com/*", "https://2captcha.com/*"],
+  "host_permissions": ["https://*.fifa.com/*", "https://*.tickets.fifa.com/*", "https://2captcha.com/*", "*://fifa-fwc26-us.tickets.fifa.com/*"],
   "action": {"default_title": "Run Tickets (Alt+T)"},
   "background": {"service_worker": "background.js"},
   "content_scripts": [
     {
-      "matches": ["https://*.tickets.fifa.com/*", "https://*.fifa.com/*"],
+      "matches": ["https://*.tickets.fifa.com/*", "https://*.fifa.com/*", "https://fifa-fwc26-us.tickets.fifa.com/*", "*://fifa-fwc26-us.tickets.fifa.com/*"],
       "js": ["captcha-solver.js", "automation-card.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
       "matches": [
         "https://*.tickets.fifa.com/account*",
         "https://*.tickets.fifa.com/*lottery*",
-        "https://fifa-fwc26-us.tickets.fifa.com/account*"
+        "https://fifa-fwc26-us.tickets.fifa.com/*"
       ],
-      "js": ["captcha-solver.js", "lottery-buy.js"],
+      "js": ["lottery-buy.js"],
       "run_at": "document_idle"
     }
   ],
